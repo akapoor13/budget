@@ -64,7 +64,7 @@ KEYWORD_MAP = {
         "Fast Food",
         "Food Delivery",
         "Groceries",
-        "Restaurants",
+        "Resturants",
     ],
     "Health & Fitness": [
         "Dentist",
@@ -94,7 +94,7 @@ KEYWORD_MAP = {
     "Personal Care": [
         "Hair",
         "Laundry",
-        "Spa & Massage",
+        "Spa & Message",
     ],
     "Shopping": [
         "Returned Purchase",
@@ -172,9 +172,10 @@ def openai_normalize(desc: str, date, amount):
         f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
     )
     prompt = (
-        "Clean up the merchant name and classify the transaction into one of the"
-        " following categories and subcategories. Respond in JSON with keys 'clean_"
-        "description', 'category', and 'subcategory'.\n\n"
+        "Clean up the merchant name, try to infer the company behind the charge,"
+        " and classify the transaction into one of the following categories and"
+        " subcategories. Respond in JSON with keys 'clean_description', 'company',"
+        " 'category', and 'subcategory'.\n\n"
         f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{cats}"
     )
     logger.debug("Prompt sent to OpenAI:\n%s", prompt)
@@ -189,16 +190,17 @@ def openai_normalize(desc: str, date, amount):
     )
     content = content.strip() if content else ""
     if not content:
-        return desc, *categorize(desc)
+        return desc, None, *categorize(desc)
 
     try:
         data = json.loads(content)
     except Exception:
         logger.exception("Failed to parse OpenAI response")
-        return desc, *categorize(desc)
+        return desc, None, *categorize(desc)
 
     return (
         data.get("clean_description", desc),
+        data.get("company"),
         data.get("category", "Uncategorized"),
         data.get("subcategory", "Uncategorized"),
     )
@@ -226,9 +228,10 @@ def batch_normalize(df: pd.DataFrame):
     )
     for idx, row in df.iterrows():
         prompt = (
-            "Clean up the merchant name and classify the transaction into one of the"
-            " following categories and subcategories. Respond in JSON with keys 'clean_"
-            "description', 'category', and 'subcategory'.\n\n"
+            "Clean up the merchant name, try to infer the company behind the charge,"
+            " and classify the transaction into one of the following categories and"
+            " subcategories. Respond in JSON with keys 'clean_description', 'company',"
+            " 'category', and 'subcategory'.\n\n"
             f"Date: {row['Date']}\nDescription: {row['Description']}\nAmount: {row['Amount']}\n\nCategories:\n{cats}"
         )
         messages = [
@@ -289,6 +292,7 @@ def batch_normalize(df: pd.DataFrame):
                 data = json.loads(content.strip())
                 results[cid] = (
                     data.get("clean_description"),
+                    data.get("company"),
                     data.get("category", "Uncategorized"),
                     data.get("subcategory", "Uncategorized"),
                 )
@@ -325,16 +329,20 @@ def main():
     for idx, row in df.iterrows():
         resp = results.get(idx)
         if resp and resp[0]:
-            merchant, category, subcategory = resp
+            merchant, company, category, subcategory = resp
         else:
             merchant = row["Description"]
+            company = None
             category, subcategory = categorize(row["Description"])
-        normalized_rows.append([merchant, category, subcategory])
+        normalized_rows.append([merchant, company, category, subcategory])
 
-    normalized = pd.DataFrame(normalized_rows, columns=["Merchant", "Category", "Subcategory"])
+    normalized = pd.DataFrame(
+        normalized_rows,
+        columns=["Merchant", "Company", "Category", "Subcategory"],
+    )
 
     out = pd.concat([df[["Date", "Amount"]], normalized], axis=1)[
-        ["Date", "Merchant", "Amount", "Category", "Subcategory"]
+        ["Date", "Merchant", "Company", "Amount", "Category", "Subcategory"]
     ]
     out.to_csv(args.output, index=False)
 
