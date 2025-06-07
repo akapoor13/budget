@@ -1,15 +1,20 @@
-# Instructions
+# Budget Normalization
 
-Written in Python.
+This repository contains a small Python script to normalize credit card statements.
 
-1. Run ./server.sh <req_code>
-2. Run ./client.sh <server_address> <n_port> <req_code> <msg>
+## Setup
 
-Note <req_code> and <n_port> must be integers
+```bash
+pip install -r requirements.txt
+```
 
-Tested on:
-ubuntu2004-002, ubuntu2004-004, ubuntu2004-008, ubuntu2004-010
+## Usage
 
-Using: python (no makefile or compile needed)
-# budget
-# budget
+```bash
+python normalize_statement.py path/to/statement.csv -o normalized.csv
+```
+
+The input CSV must have the columns `Date`, `Description`, and `Amount`. The script
+adds `Category` and `Subcategory` columns based on keyword matching and writes the
+output CSV without the original indexes.
+
