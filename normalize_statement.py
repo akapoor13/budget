@@ -189,12 +189,12 @@ def categorize(desc: str) -> tuple[str, str]:
 
 
 def batch_normalize(df: pd.DataFrame):
-    """Normalize all rows at once using the OpenAI Batch API."""
+    """Normalize rows sequentially using the Chat API with retries."""
     load_api_key()
 
-    requests: list[dict] = []
+    results: dict[int, TransactionClassification] = {}
     for idx, row in df.iterrows():
-        prompt = build_prompt(row['Description'], row['Date'], row['Amount'])
+        prompt = build_prompt(row["Description"], row["Date"], row["Amount"])
         messages = [
             {
                 "role": "system",
@@ -202,68 +202,33 @@ def batch_normalize(df: pd.DataFrame):
             },
             {"role": "user", "content": prompt},
         ]
-        requests.append(
-            {
-                "custom_id": str(idx),
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": DEFAULT_MODEL,
-                    "messages": messages,
-                    "temperature": 0,
-                    "response_format": {"type": "json_object"},
-                },
-            }
-        )
 
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".jsonl") as fh:
-        for req in requests:
-            fh.write(json.dumps(req) + "\n")
-        input_path = fh.name
-
-    try:
-        file_obj = openai.files.create(file=open(input_path, "rb"), purpose="batch")
-        batch = openai.batches.create(
-            input_file_id=file_obj.id,
-            endpoint="/v1/chat/completions",
-            completion_window="24h",
-        )
-        logger.info("Created batch %s", batch.id)
-        while True:
-            batch = openai.batches.retrieve(batch.id)
-            if batch.status in {"completed", "failed", "expired", "cancelled"}:
-                break
-            time.sleep(5)
-
-        if batch.status != "completed":
-            raise RuntimeError(f"Batch finished with status {batch.status}")
-
-        output = openai.files.content(batch.output_file_id).decode("utf-8").splitlines()
-    finally:
-        os.remove(input_path)
-
-    results: dict[int, TransactionClassification] = {}
-    for line in output:
-        rec = json.loads(line)
-        cid = int(rec.get("custom_id", 0))
-        if "response" in rec and rec["response"].get("status_code") == 200:
-            body = json.loads(rec["response"]["body"])
-            content = body["choices"][0]["message"]["content"]
+        for attempt in range(5):
             try:
+                resp = openai.chat.completions.create(
+                    model=DEFAULT_MODEL,
+                    messages=messages,
+                    temperature=0,
+                    response_format={"type": "json_object"},
+                )
+                content = resp.choices[0].message.content
                 data = json.loads(content.strip())
-                results[cid] = TransactionClassification(
+                results[idx] = TransactionClassification(
                     data.get("company"),
                     data.get("category", "Uncategorized"),
                     data.get("subcategory", "Uncategorized"),
                 )
-            except Exception:
-                logger.exception("Failed to parse response for row %s", cid)
-                cat, sub = categorize(df.loc[cid, "Description"])
-                results[cid] = TransactionClassification(None, cat, sub)
+                break
+            except Exception as exc:  # broad catch to retry on any failure
+                wait = 2 ** attempt
+                logger.exception(
+                    "Request failed for row %s (attempt %s): %s", idx, attempt + 1, exc
+                )
+                time.sleep(wait)
         else:
-            logger.error("Request %s failed: %s", cid, rec.get("error"))
-            cat, sub = categorize(df.loc[cid, "Description"])
-            results[cid] = TransactionClassification(None, cat, sub)
+            cat, sub = categorize(row["Description"])
+            results[idx] = TransactionClassification(None, cat, sub)
+
     return results
 
 
