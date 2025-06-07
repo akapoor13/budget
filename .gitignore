@@ -1,0 +1,24 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# IDE settings
+.idea/
+.vscode/
+
+# Test and coverage outputs
+.pytest_cache/
+.coverage
+
+# Local secret keys
+.openai_api_key
+
+# MacOS metadata
+.DS_Store
