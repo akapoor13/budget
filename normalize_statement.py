@@ -1,9 +1,14 @@
 import argparse
 import json
 import os
+import logging
 
 import openai
 import pandas as pd
+
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+logger = logging.getLogger(__name__)
 
 # Mapping of available spending categories to their subcategories
 KEYWORD_MAP = {
@@ -139,9 +144,10 @@ def openai_normalize(desc: str, date, amount):
         "description', 'category', and 'subcategory'.\n\n"
         f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{cats}"
     )
+    logger.debug("Prompt sent to OpenAI:\n%s", prompt)
     try:
         resp = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model=MODEL,
             messages=[
                 {
                     "role": "system",
@@ -152,14 +158,22 @@ def openai_normalize(desc: str, date, amount):
             temperature=0,
         )
         content = resp["choices"][0]["message"]["content"]
-        data = json.loads(content)
-        return (
-            data.get("clean_description", desc),
-            data.get("category", "Uncategorized"),
-            data.get("subcategory", "Uncategorized"),
-        )
+        logger.debug("Response from OpenAI: %s", content)
     except Exception:
+        logger.exception("OpenAI API call failed")
         return desc, *categorize(desc)
+
+    try:
+        data = json.loads(content)
+    except Exception:
+        logger.exception("Failed to parse OpenAI response")
+        return desc, *categorize(desc)
+
+    return (
+        data.get("clean_description", desc),
+        data.get("category", "Uncategorized"),
+        data.get("subcategory", "Uncategorized"),
+    )
 
 def categorize(desc: str):
     desc_low = desc.lower()
@@ -177,7 +191,11 @@ def main():
     parser = argparse.ArgumentParser(description='Normalize a credit card statement')
     parser.add_argument('csvfile', help='Path to input CSV statement')
     parser.add_argument('-o', '--output', help='Output CSV file name', default='normalized.csv')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Enable debug logging')
     args = parser.parse_args()
+
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=level, format='%(levelname)s:%(name)s:%(message)s')
 
     df = pd.read_csv(args.csvfile)
     for col in ['Date', 'Description', 'Amount']:

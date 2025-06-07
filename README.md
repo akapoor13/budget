@@ -19,6 +19,9 @@ variable. Alternatively you can place the key in a file named
 `.openai_api_key` either in the repository root or in your home directory and
 it will be loaded automatically.
 
+The script now defaults to the `gpt-4o-mini` model. Set the `OPENAI_MODEL`
+environment variable to override this.
+
 The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
 is sent to the OpenAI API to clean up the merchant name and determine the most
 likely spending category. The output CSV contains the columns `Date`, `Merchant`,
