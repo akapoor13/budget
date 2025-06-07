@@ -14,6 +14,11 @@ pip install -r requirements.txt
 python normalize_statement.py path/to/statement.csv -o normalized.csv
 ```
 
+The script looks for the OpenAI API key in the `OPENAI_API_KEY` environment
+variable. Alternatively you can place the key in a file named
+`.openai_api_key` either in the repository root or in your home directory and
+it will be loaded automatically.
+
 The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
 is sent to the OpenAI API to clean up the merchant name and determine the most
 likely spending category. The output CSV contains the columns `Date`, `Merchant`,

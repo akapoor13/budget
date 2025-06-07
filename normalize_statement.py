@@ -96,10 +96,26 @@ for _kw, (cat, subcat) in KEYWORD_MAP.items():
     CATEGORIES.setdefault(cat, set()).add(subcat)
 
 
+def load_api_key():
+    """Load the OpenAI API key from env or local files."""
+    if openai.api_key:
+        return
+
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        openai.api_key = key.strip()
+        return
+
+    for path in [".openai_api_key", os.path.expanduser("~/.openai_api_key")]:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as fh:
+                openai.api_key = fh.read().strip()
+            return
+
+
 def openai_normalize(desc: str, date, amount):
     """Use OpenAI to clean merchant name and classify the transaction."""
-    if not openai.api_key:
-        openai.api_key = os.getenv("OPENAI_API_KEY", "")
+    load_api_key()
 
     cats = "\n".join(
         f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
