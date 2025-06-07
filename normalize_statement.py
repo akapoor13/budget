@@ -117,6 +117,7 @@ CATEGORIES = {cat: set(subs) for cat, subs in KEYWORD_MAP.items()}
 def load_api_key():
     """Load the OpenAI API key from env or local files."""
     if openai.api_key:
+        os.environ.setdefault("OPENAI_API_KEY", openai.api_key)
         return
 
     key = os.getenv("OPENAI_API_KEY")
@@ -128,6 +129,7 @@ def load_api_key():
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as fh:
                 openai.api_key = fh.read().strip()
+            os.environ["OPENAI_API_KEY"] = openai.api_key
             return
 
 
@@ -146,7 +148,7 @@ def openai_normalize(desc: str, date, amount):
     )
     logger.debug("Prompt sent to OpenAI:\n%s", prompt)
     try:
-        resp = openai.ChatCompletion.create(
+        resp = openai.chat.completions.create(
             model=MODEL,
             messages=[
                 {
@@ -157,7 +159,7 @@ def openai_normalize(desc: str, date, amount):
             ],
             temperature=0,
         )
-        content = resp["choices"][0]["message"]["content"]
+        content = resp.choices[0].message.content
         logger.debug("Response from OpenAI: %s", content)
     except Exception:
         logger.exception("OpenAI API call failed")
