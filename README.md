@@ -14,7 +14,8 @@ pip install -r requirements.txt
 python normalize_statement.py path/to/statement.csv -o normalized.csv
 ```
 
-The input CSV must have the columns `Date`, `Description`, and `Amount`. The script
-adds `Category` and `Subcategory` columns based on keyword matching and writes the
-output CSV without the original indexes.
+The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
+is sent to the OpenAI API to clean up the merchant name and determine the most
+likely spending category. The output CSV contains the columns `Date`, `Merchant`,
+`Amount`, `Category`, and `Subcategory`.
 
