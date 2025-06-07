@@ -140,9 +140,14 @@ def load_api_key():
     )
 
 
+# The OpenAI Python package moved its error classes from the ``error`` module to
+# the package root in v1. To remain compatible with both the 0.x and 1.x
+# versions we dynamically pick the location of the error classes.
+errors_mod = openai.error if hasattr(openai, "error") else openai
+
 @backoff.on_exception(
     backoff.expo,
-    (openai.error.RateLimitError, openai.error.APIError),
+    (errors_mod.RateLimitError, errors_mod.APIError),
     max_tries=5,
     logger=logger,
 )
