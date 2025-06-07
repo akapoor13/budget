@@ -19,6 +19,9 @@ variable. Alternatively you can place the key in a file named
 `.openai_api_key` either in the repository root or in your home directory and
 it will be loaded automatically.
 
+If the key cannot be located, the script will now raise a clear error
+explaining how to provide it.
+
 The script now defaults to the `gpt-4o-mini` model. Set the `OPENAI_MODEL`
 environment variable to override this.
 

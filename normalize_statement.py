@@ -118,19 +118,24 @@ def load_api_key():
     """Load the OpenAI API key from env or local files."""
     if openai.api_key:
         os.environ.setdefault("OPENAI_API_KEY", openai.api_key)
-        return
+        return openai.api_key
 
     key = os.getenv("OPENAI_API_KEY")
     if key:
         openai.api_key = key.strip()
-        return
+        return openai.api_key
 
     for path in [".openai_api_key", os.path.expanduser("~/.openai_api_key")]:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as fh:
                 openai.api_key = fh.read().strip()
             os.environ["OPENAI_API_KEY"] = openai.api_key
-            return
+            return openai.api_key
+
+    raise RuntimeError(
+        "OpenAI API key not found. Set the OPENAI_API_KEY environment variable or "
+        "create a .openai_api_key file."
+    )
 
 
 def openai_normalize(desc: str, date, amount):
