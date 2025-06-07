@@ -38,6 +38,6 @@ valid JSON object.
 The input CSV must have the columns `Date`, `Description`, and `Amount`. All rows
 are sent together using the OpenAI Batch API to clean up the merchant name,
 infer the company, and determine the most likely spending category. The output
-CSV contains the columns `Date`, `Merchant`, `Company`, `Amount`, `Category`,
+CSV contains the columns `Date`, `Description`, `Amount`, `Category`,
 and `Subcategory`.
 

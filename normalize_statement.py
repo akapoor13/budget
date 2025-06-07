@@ -329,21 +329,26 @@ def main():
     for idx, row in df.iterrows():
         resp = results.get(idx)
         if resp and resp[0]:
-            merchant, company, category, subcategory = resp
+            merchant, _company, category, subcategory = resp
         else:
             merchant = row["Description"]
-            company = None
             category, subcategory = categorize(row["Description"])
-        normalized_rows.append([merchant, company, category, subcategory])
+        normalized_rows.append([merchant, category, subcategory])
 
     normalized = pd.DataFrame(
         normalized_rows,
-        columns=["Merchant", "Company", "Category", "Subcategory"],
+        columns=["Description", "Category", "Subcategory"],
     )
 
-    out = pd.concat([df[["Date", "Amount"]], normalized], axis=1)[
-        ["Date", "Merchant", "Company", "Amount", "Category", "Subcategory"]
-    ]
+    out = pd.DataFrame(
+        {
+            "Date": df["Date"],
+            "Description": normalized["Description"],
+            "Amount": df["Amount"],
+            "Category": normalized["Category"],
+            "Subcategory": normalized["Subcategory"],
+        }
+    )
     out.to_csv(args.output, index=False)
 
 
