@@ -8,6 +8,9 @@ This repository contains a small Python script to normalize credit card statemen
 pip install -r requirements.txt
 ```
 
+The script requires `openai` version 1.0 or higher and uses the modern `OpenAI`
+client interface.
+
 ## Usage
 
 ```bash

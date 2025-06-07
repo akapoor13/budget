@@ -1,2 +1,2 @@
 pandas
-openai
+openai>=1.0

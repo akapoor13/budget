@@ -6,6 +6,8 @@ import logging
 import openai
 import pandas as pd
 
+_client = None
+
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 logger = logging.getLogger(__name__)
@@ -61,7 +63,7 @@ KEYWORD_MAP = {
         'Fast Food',
         'Food Delivery',
         'Groceries',
-        'Resturants',
+        'Restaurants',
     ],
     'Health & Fitness': [
         'Dentist',
@@ -91,7 +93,7 @@ KEYWORD_MAP = {
     'Personal Care': [
         'Hair',
         'Laundry',
-        'Spa & Message',
+        'Spa & Massage',
     ],
     'Shopping': [
         'Returned Purchase',
@@ -115,27 +117,35 @@ CATEGORIES = {cat: set(subs) for cat, subs in KEYWORD_MAP.items()}
 
 
 def load_api_key():
-    """Load the OpenAI API key from env or local files."""
-    if openai.api_key:
-        os.environ.setdefault("OPENAI_API_KEY", openai.api_key)
-        return
+    """Load the OpenAI API key and return a client."""
+    global _client
+    if _client is not None:
+        return _client
 
-    key = os.getenv("OPENAI_API_KEY")
+    key = openai.api_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        for path in [".openai_api_key", os.path.expanduser("~/.openai_api_key")]:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as fh:
+                    key = fh.read().strip()
+                os.environ["OPENAI_API_KEY"] = key
+                break
+
     if key:
-        openai.api_key = key.strip()
-        return
-
-    for path in [".openai_api_key", os.path.expanduser("~/.openai_api_key")]:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as fh:
-                openai.api_key = fh.read().strip()
-            os.environ["OPENAI_API_KEY"] = openai.api_key
-            return
+        openai.api_key = key
+        os.environ.setdefault("OPENAI_API_KEY", key)
+        _client = openai.OpenAI(api_key=key)
+    else:
+        _client = None
+    return _client
 
 
 def openai_normalize(desc: str, date, amount):
     """Use OpenAI to clean merchant name and classify the transaction."""
-    load_api_key()
+    client = load_api_key()
+    if client is None:
+        logger.error("OpenAI API key not found")
+        return desc, *categorize(desc)
 
     cats = "\n".join(
         f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
@@ -148,7 +158,7 @@ def openai_normalize(desc: str, date, amount):
     )
     logger.debug("Prompt sent to OpenAI:\n%s", prompt)
     try:
-        resp = openai.chat.completions.create(
+        resp = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {
