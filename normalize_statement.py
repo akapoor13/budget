@@ -1,17 +1,32 @@
+"""Utility to normalize credit card statements using OpenAI."""
+
+from __future__ import annotations
+
 import argparse
 import json
-import os
 import logging
-import time
+import os
 import tempfile
+import time
+from dataclasses import dataclass
+from typing import Iterable, Optional
 
 import backoff
 import openai
 import pandas as pd
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TransactionClassification:
+    """Structured result describing a classified transaction."""
+
+    company: Optional[str]
+    category: str
+    subcategory: str
 
 # Mapping of available spending categories to their subcategories
 KEYWORD_MAP = {
@@ -117,15 +132,35 @@ KEYWORD_MAP = {
 CATEGORIES = {cat: set(subs) for cat, subs in KEYWORD_MAP.items()}
 
 
+def build_categories_string() -> str:
+    """Return a formatted list of available categories."""
+    return "\n".join(
+        f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
+    )
+
+
+def build_prompt(desc: str, date, amount) -> str:
+    """Construct the user prompt sent to OpenAI."""
+    return (
+        "Clean up the merchant name, try to infer the company behind the charge,"
+        " and classify the transaction into one of the following categories and"
+        " subcategories. Respond in JSON with keys 'company', 'category', and"
+        " 'subcategory'.\n\n"
+        f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{build_categories_string()}"
+    )
+
+
 def load_api_key():
     """Load the OpenAI API key from env or local files."""
     if openai.api_key:
         os.environ.setdefault("OPENAI_API_KEY", openai.api_key)
+        logger.debug("Loaded API key from openai.api_key")
         return openai.api_key
 
     key = os.getenv("OPENAI_API_KEY")
     if key:
         openai.api_key = key.strip()
+        logger.debug("Loaded API key from environment variable")
         return openai.api_key
 
     for path in [".openai_api_key", os.path.expanduser("~/.openai_api_key")]:
@@ -133,6 +168,7 @@ def load_api_key():
             with open(path, "r", encoding="utf-8") as fh:
                 openai.api_key = fh.read().strip()
             os.environ["OPENAI_API_KEY"] = openai.api_key
+            logger.debug("Loaded API key from %s", path)
             return openai.api_key
 
     raise RuntimeError(
@@ -156,7 +192,7 @@ errors_mod = openai.error if hasattr(openai, "error") else openai
 def _chat_with_retry(messages):
     """Call OpenAI with exponential backoff on rate limit errors."""
     resp = openai.chat.completions.create(
-        model=MODEL,
+        model=DEFAULT_MODEL,
         messages=messages,
         temperature=0,
         response_format={"type": "json_object"},
@@ -168,16 +204,7 @@ def openai_normalize(desc: str, date, amount):
     """Use OpenAI to clean merchant name and classify the transaction."""
     load_api_key()
 
-    cats = "\n".join(
-        f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
-    )
-    prompt = (
-        "Clean up the merchant name, try to infer the company behind the charge,"
-        " and classify the transaction into one of the following categories and"
-        " subcategories. Respond in JSON with keys 'company', 'category', and"
-        " 'subcategory'.\n\n"
-        f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{cats}"
-    )
+    prompt = build_prompt(desc, date, amount)
     logger.debug("Prompt sent to OpenAI:\n%s", prompt)
     content = _chat_with_retry(
         [
@@ -202,22 +229,25 @@ def openai_normalize(desc: str, date, amount):
             content = match.group(1).strip()
 
     if not content:
-        return None, *categorize(desc)
+        cat, sub = categorize(desc)
+        return TransactionClassification(None, cat, sub)
 
     try:
         data = json.loads(content)
     except Exception:
         logger.exception("Failed to parse OpenAI response")
-        return None, *categorize(desc)
+        cat, sub = categorize(desc)
+        return TransactionClassification(None, cat, sub)
 
-    return (
+    return TransactionClassification(
         data.get("company"),
         data.get("category", "Uncategorized"),
         data.get("subcategory", "Uncategorized"),
     )
 
 
-def categorize(desc: str):
+def categorize(desc: str) -> tuple[str, str]:
+    """Infer category and subcategory from description using keyword matching."""
     desc_low = desc.lower()
     for cat, subcats in CATEGORIES.items():
         for subcat in subcats:
@@ -233,18 +263,9 @@ def batch_normalize(df: pd.DataFrame):
     """Normalize all rows at once using the OpenAI Batch API."""
     load_api_key()
 
-    requests = []
-    cats = "\n".join(
-        f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
-    )
+    requests: list[dict] = []
     for idx, row in df.iterrows():
-        prompt = (
-            "Clean up the merchant name, try to infer the company behind the charge,"
-            " and classify the transaction into one of the following categories and"
-            " subcategories. Respond in JSON with keys 'company', 'category', and"
-            " 'subcategory'.\n\n"
-            f"Date: {row['Date']}\nDescription: {row['Description']}\nAmount: {row['Amount']}\n\nCategories:\n{cats}"
-        )
+        prompt = build_prompt(row['Description'], row['Date'], row['Amount'])
         messages = [
             {
                 "role": "system",
@@ -258,7 +279,7 @@ def batch_normalize(df: pd.DataFrame):
                 "method": "POST",
                 "url": "/v1/chat/completions",
                 "body": {
-                    "model": MODEL,
+                    "model": DEFAULT_MODEL,
                     "messages": messages,
                     "temperature": 0,
                     "response_format": {"type": "json_object"},
@@ -292,7 +313,7 @@ def batch_normalize(df: pd.DataFrame):
     finally:
         os.remove(input_path)
 
-    results = {}
+    results: dict[int, TransactionClassification] = {}
     for line in output:
         rec = json.loads(line)
         cid = int(rec.get("custom_id", 0))
@@ -301,15 +322,19 @@ def batch_normalize(df: pd.DataFrame):
             content = body["choices"][0]["message"]["content"]
             try:
                 data = json.loads(content.strip())
-                results[cid] = (
+                results[cid] = TransactionClassification(
                     data.get("company"),
                     data.get("category", "Uncategorized"),
                     data.get("subcategory", "Uncategorized"),
                 )
             except Exception:
                 logger.exception("Failed to parse response for row %s", cid)
+                cat, sub = categorize(df.loc[cid, "Description"])
+                results[cid] = TransactionClassification(None, cat, sub)
         else:
             logger.error("Request %s failed: %s", cid, rec.get("error"))
+            cat, sub = categorize(df.loc[cid, "Description"])
+            results[cid] = TransactionClassification(None, cat, sub)
     return results
 
 
@@ -337,10 +362,11 @@ def main():
     results = batch_normalize(df)
     normalized_rows = []
     for idx, row in df.iterrows():
-        resp = results.get(idx)
-        if resp:
-            company, category, subcategory = resp
-            desc = company or row["Description"]
+        classification = results.get(idx)
+        if classification:
+            desc = classification.company or row["Description"]
+            category = classification.category
+            subcategory = classification.subcategory
         else:
             desc = row["Description"]
             category, subcategory = categorize(row["Description"])
