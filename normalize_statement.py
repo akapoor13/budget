@@ -4,6 +4,7 @@ import os
 import logging
 import time
 
+import backoff
 import openai
 import pandas as pd
 
@@ -139,28 +140,20 @@ def load_api_key():
     )
 
 
-def _chat_with_retry(messages, max_retries: int = 5):
+@backoff.on_exception(
+    backoff.expo,
+    (openai.error.RateLimitError, openai.error.APIError),
+    max_tries=5,
+    logger=logger,
+)
+def _chat_with_retry(messages):
     """Call OpenAI with exponential backoff on rate limit errors."""
-    delay = 1
-    for attempt in range(max_retries):
-        try:
-            resp = openai.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                temperature=0,
-            )
-            return resp.choices[0].message.content
-        except openai.RateLimitError:
-            logger.warning("Rate limit hit, retrying in %s seconds", delay)
-        except openai.APIError as exc:
-            logger.warning("OpenAI API error: %s. Retrying in %s seconds", exc, delay)
-        except Exception:
-            logger.exception("OpenAI API call failed")
-            return None
-        time.sleep(delay)
-        delay = min(delay * 2, 60)
-    logger.error("Exceeded maximum OpenAI retries")
-    return None
+    resp = openai.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        temperature=0,
+    )
+    return resp.choices[0].message.content
 
 
 def openai_normalize(desc: str, date, amount):
