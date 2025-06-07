@@ -13,7 +13,7 @@ from typing import Optional
 import openai
 import pandas as pd
 
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
 
 logger = logging.getLogger(__name__)
 
@@ -140,10 +140,9 @@ def build_categories_string() -> str:
 def build_prompt(desc: str, date, amount) -> str:
     """Construct the user prompt sent to OpenAI."""
     return (
-        "Clean up the merchant name, try to infer the company behind the charge,"
-        " and classify the transaction into one of the following categories and"
-        " subcategories. Respond in JSON with keys 'company', 'category', and"
-        " 'subcategory'.\n\n"
+        "Clean up the merchant name, infer the company, and classify the charge. "
+        "Treat any 'AplPay' or 'Apple Pay' tag as the payment method, not part of the company name. "
+        "Respond in JSON with keys 'company', 'category', and 'subcategory'.\n\n"
         f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{build_categories_string()}"
     )
 
