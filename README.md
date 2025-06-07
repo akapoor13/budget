@@ -22,8 +22,8 @@ it will be loaded automatically.
 If the key cannot be located, the script will now raise a clear error
 explaining how to provide it.
 
-The script now defaults to the `gpt-4o-mini` model. Set the `OPENAI_MODEL`
-environment variable to override this.
+The script now defaults to the `gpt-3.5-turbo` model, which is available for
+free tier users. Set the `OPENAI_MODEL` environment variable to override this.
 
 The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
 is sent to the OpenAI API to clean up the merchant name and determine the most
