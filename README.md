@@ -29,6 +29,10 @@ If the OpenAI API returns a rate limit or other transient error, the script
 automatically retries the request with exponential backoff using the `backoff`
 library.
 
+To avoid parse errors the script now requests structured responses from
+OpenAI using the `response_format` parameter so the model always returns a
+valid JSON object.
+
 The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
 is sent to the OpenAI API to clean up the merchant name and determine the most
 likely spending category. The output CSV contains the columns `Date`, `Merchant`,
