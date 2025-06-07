@@ -187,6 +187,18 @@ def openai_normalize(desc: str, date, amount):
         ]
     )
     content = content.strip() if content else ""
+
+    # Newer models sometimes wrap the JSON response in a Markdown code block
+    # when asked for a structured reply. Strip these markers if present so the
+    # result can be parsed correctly.
+    if content.startswith("```"):
+        # Extract text between the first and last code fences
+        import re
+
+        match = re.search(r"```(?:json)?\n?(.*?)```", content, re.DOTALL)
+        if match:
+            content = match.group(1).strip()
+
     if not content:
         return desc, *categorize(desc)
 
