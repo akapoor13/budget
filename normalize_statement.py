@@ -142,6 +142,7 @@ def build_prompt(desc: str, date, amount) -> str:
     return (
         "Clean up the merchant name, infer the company, and classify the charge. "
         "Treat any 'AplPay' or 'Apple Pay' tag as the payment method, not part of the company name. "
+        "Remove any location, country, city, or state references from the name. "
         "Respond in JSON with keys 'company', 'category', and 'subcategory'.\n\n"
         f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{build_categories_string()}"
     )
