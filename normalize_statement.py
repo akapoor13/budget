@@ -14,101 +14,101 @@ logger = logging.getLogger(__name__)
 
 # Mapping of available spending categories to their subcategories
 KEYWORD_MAP = {
-    'Auto & Transport': [
-        'Auto Insurance',
-        'Auto Payment',
-        'Gas & Fuel',
-        'Parking',
-        'Public Transportation',
-        'Ride Share',
-        'Service & Parts',
+    "Auto & Transport": [
+        "Auto Insurance",
+        "Auto Payment",
+        "Gas & Fuel",
+        "Parking",
+        "Public Transportation",
+        "Ride Share",
+        "Service & Parts",
     ],
-    'Bills & Utilities': [
-        'Home Phone',
-        'Internet',
-        'Mobile Phone',
-        'Television',
-        'Utilities',
+    "Bills & Utilities": [
+        "Home Phone",
+        "Internet",
+        "Mobile Phone",
+        "Television",
+        "Utilities",
     ],
-    'Education': [
-        'Books & Supplies',
-        'Student Loan',
-        'Tuition',
+    "Education": [
+        "Books & Supplies",
+        "Student Loan",
+        "Tuition",
     ],
-    'Entertainment': [
-        'Amusement',
-        'Arts',
-        'Movies & DVDs',
-        'Music',
-        'Newspapers & Magazines',
+    "Entertainment": [
+        "Amusement",
+        "Arts",
+        "Movies & DVDs",
+        "Music",
+        "Newspapers & Magazines",
     ],
-    'Fees & Charges': [
-        'ATM Fee',
-        'Bank Fee',
-        'Finance Charge',
-        'Late Fee',
-        'Service Fee',
-        'Federal Tax',
-        'Local Tax',
-        'Property Tax',
-        'Sales Tax',
-        'State Tax',
+    "Fees & Charges": [
+        "ATM Fee",
+        "Bank Fee",
+        "Finance Charge",
+        "Late Fee",
+        "Service Fee",
+        "Federal Tax",
+        "Local Tax",
+        "Property Tax",
+        "Sales Tax",
+        "State Tax",
     ],
-    'Financial': [
-        'Trade Commissions',
+    "Financial": [
+        "Trade Commissions",
     ],
-    'Food & Dining': [
-        'Alcohol & Bars',
-        'Coffee Shops',
-        'Fast Food',
-        'Food Delivery',
-        'Groceries',
-        'Resturants',
+    "Food & Dining": [
+        "Alcohol & Bars",
+        "Coffee Shops",
+        "Fast Food",
+        "Food Delivery",
+        "Groceries",
+        "Resturants",
     ],
-    'Health & Fitness': [
-        'Dentist',
-        'Doctor',
-        'Eyecare',
-        'Gym',
-        'Health Insurance',
-        'Pharmacy',
-        'Sports',
+    "Health & Fitness": [
+        "Dentist",
+        "Doctor",
+        "Eyecare",
+        "Gym",
+        "Health Insurance",
+        "Pharmacy",
+        "Sports",
     ],
-    'Home': [
-        'Furnishings',
-        'Home Improvement',
-        'Home Insurance',
-        'Home Services',
-        'Home Supplies',
-        'Lawn & Garden',
-        'Mortgage & Rent',
+    "Home": [
+        "Furnishings",
+        "Home Improvement",
+        "Home Insurance",
+        "Home Services",
+        "Home Supplies",
+        "Lawn & Garden",
+        "Mortgage & Rent",
     ],
-    'Income': [
-        'Bonus',
-        'Interest Income',
-        'Paycheck',
-        'Reimbursement',
-        'Rental Income',
+    "Income": [
+        "Bonus",
+        "Interest Income",
+        "Paycheck",
+        "Reimbursement",
+        "Rental Income",
     ],
-    'Personal Care': [
-        'Hair',
-        'Laundry',
-        'Spa & Message',
+    "Personal Care": [
+        "Hair",
+        "Laundry",
+        "Spa & Message",
     ],
-    'Shopping': [
-        'Returned Purchase',
-        'Books',
-        'Clothing',
-        'Electronics & Software',
-        'Hobbies',
-        'Sporting Goods',
-        'Amazon',
+    "Shopping": [
+        "Returned Purchase",
+        "Books",
+        "Clothing",
+        "Electronics & Software",
+        "Hobbies",
+        "Sporting Goods",
+        "Amazon",
     ],
-    'Travel': [
-        'Air Travel',
-        'Hotel',
-        'Rental Car & Taxi',
-        'Vacation',
+    "Travel": [
+        "Air Travel",
+        "Hotel",
+        "Rental Car & Taxi",
+        "Vacation",
     ],
 }
 
@@ -145,6 +145,7 @@ def load_api_key():
 # versions we dynamically pick the location of the error classes.
 errors_mod = openai.error if hasattr(openai, "error") else openai
 
+
 @backoff.on_exception(
     backoff.expo,
     (errors_mod.RateLimitError, errors_mod.APIError),
@@ -157,6 +158,7 @@ def _chat_with_retry(messages):
         model=MODEL,
         messages=messages,
         temperature=0,
+        response_format={"type": "json_object"},
     )
     return resp.choices[0].message.content
 
@@ -184,6 +186,7 @@ def openai_normalize(desc: str, date, amount):
             {"role": "user", "content": prompt},
         ]
     )
+    content = content.strip() if content else ""
     if not content:
         return desc, *categorize(desc)
 
@@ -199,6 +202,7 @@ def openai_normalize(desc: str, date, amount):
         data.get("subcategory", "Uncategorized"),
     )
 
+
 def categorize(desc: str):
     desc_low = desc.lower()
     for cat, subcats in CATEGORIES.items():
@@ -207,39 +211,44 @@ def categorize(desc: str):
                 return cat, subcat
     for cat in CATEGORIES:
         if cat.lower() in desc_low:
-            return cat, 'Uncategorized'
-    return 'Uncategorized', 'Uncategorized'
+            return cat, "Uncategorized"
+    return "Uncategorized", "Uncategorized"
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Normalize a credit card statement')
-    parser.add_argument('csvfile', help='Path to input CSV statement')
-    parser.add_argument('-o', '--output', help='Output CSV file name', default='normalized.csv')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Enable debug logging')
+    parser = argparse.ArgumentParser(description="Normalize a credit card statement")
+    parser.add_argument("csvfile", help="Path to input CSV statement")
+    parser.add_argument(
+        "-o", "--output", help="Output CSV file name", default="normalized.csv"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable debug logging"
+    )
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO
-    logging.basicConfig(level=level, format='%(levelname)s:%(name)s:%(message)s')
+    logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
 
     df = pd.read_csv(args.csvfile)
-    for col in ['Date', 'Description', 'Amount']:
+    for col in ["Date", "Description", "Amount"]:
         if col not in df.columns:
             raise ValueError(f"Missing required column: {col}")
 
-    df['Date'] = pd.to_datetime(df['Date']).dt.date
+    df["Date"] = pd.to_datetime(df["Date"]).dt.date
 
     normalized = df.apply(
         lambda row: pd.Series(
-            openai_normalize(row['Description'], row['Date'], row['Amount'])
+            openai_normalize(row["Description"], row["Date"], row["Amount"])
         ),
         axis=1,
     )
-    normalized.columns = ['Merchant', 'Category', 'Subcategory']
+    normalized.columns = ["Merchant", "Category", "Subcategory"]
 
-    out = pd.concat([df[['Date', 'Amount']], normalized], axis=1)[
-        ['Date', 'Merchant', 'Amount', 'Category', 'Subcategory']
+    out = pd.concat([df[["Date", "Amount"]], normalized], axis=1)[
+        ["Date", "Merchant", "Amount", "Category", "Subcategory"]
     ]
     out.to_csv(args.output, index=False)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
