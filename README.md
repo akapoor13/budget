@@ -26,7 +26,8 @@ The script now defaults to the `gpt-3.5-turbo` model, which is available for
 free tier users. Set the `OPENAI_MODEL` environment variable to override this.
 
 If the OpenAI API returns a rate limit or other transient error, the script
-automatically retries the request with exponential backoff.
+automatically retries the request with exponential backoff using the `backoff`
+library.
 
 The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
 is sent to the OpenAI API to clean up the merchant name and determine the most
