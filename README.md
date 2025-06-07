@@ -24,8 +24,8 @@ it will be loaded automatically.
 If the key cannot be located, the script will now raise a clear error
 explaining how to provide it.
 
-The script now defaults to the `gpt-4o-mini` model, which is available for
-free tier users. Set the `OPENAI_MODEL` environment variable to override this.
+The script now defaults to the `gpt-4.1-nano` model. Set the `OPENAI_MODEL`
+environment variable to override this.
 
 If the OpenAI API returns a rate limit or other transient error, the script
 automatically retries the request with exponential backoff using the `backoff`
