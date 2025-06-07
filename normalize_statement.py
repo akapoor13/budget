@@ -5,95 +5,108 @@ import os
 import openai
 import pandas as pd
 
+# Mapping of available spending categories to their subcategories
 KEYWORD_MAP = {
-    'auto insurance': ('Auto & Transport', 'Auto Insurance'),
-    'auto payment': ('Auto & Transport', 'Auto Payment'),
-    'gas': ('Auto & Transport', 'Gas & Fuel'),
-    'fuel': ('Auto & Transport', 'Gas & Fuel'),
-    'parking': ('Auto & Transport', 'Parking'),
-    'public transportation': ('Auto & Transport', 'Public Transportation'),
-    'ride share': ('Auto & Transport', 'Ride Share'),
-    'uber': ('Auto & Transport', 'Ride Share'),
-    'lyft': ('Auto & Transport', 'Ride Share'),
-    'service & parts': ('Auto & Transport', 'Service & Parts'),
-    'home phone': ('Bills & Utilities', 'Home Phone'),
-    'internet': ('Bills & Utilities', 'Internet'),
-    'mobile phone': ('Bills & Utilities', 'Mobile Phone'),
-    'television': ('Bills & Utilities', 'Television'),
-    'utilities': ('Bills & Utilities', 'Utilities'),
-    'books & supplies': ('Education', 'Books & Supplies'),
-    'student loan': ('Education', 'Student Loan'),
-    'tuition': ('Education', 'Tuition'),
-    'amusement': ('Entertainment', 'Amusement'),
-    'arts': ('Entertainment', 'Arts'),
-    'movies': ('Entertainment', 'Movies & DVDs'),
-    'dvd': ('Entertainment', 'Movies & DVDs'),
-    'music': ('Entertainment', 'Music'),
-    'newspapers': ('Entertainment', 'Newspapers & Magazines'),
-    'magazines': ('Entertainment', 'Newspapers & Magazines'),
-    'atm fee': ('Fees & Charges', 'ATM Fee'),
-    'bank fee': ('Fees & Charges', 'Bank Fee'),
-    'finance charge': ('Fees & Charges', 'Finance Charge'),
-    'late fee': ('Fees & Charges', 'Late Fee'),
-    'service fee': ('Fees & Charges', 'Service Fee'),
-    'federal tax': ('Fees & Charges', 'Federal Tax'),
-    'local tax': ('Fees & Charges', 'Local Tax'),
-    'property tax': ('Fees & Charges', 'Property Tax'),
-    'sales tax': ('Fees & Charges', 'Sales Tax'),
-    'state tax': ('Fees & Charges', 'State Tax'),
-    'trade commission': ('Financial', 'Trade Commissions'),
-    'alcohol': ('Food & Dining', 'Alcohol & Bars'),
-    'bar': ('Food & Dining', 'Alcohol & Bars'),
-    'coffee': ('Food & Dining', 'Coffee Shops'),
-    'fast food': ('Food & Dining', 'Fast Food'),
-    'delivery': ('Food & Dining', 'Food Delivery'),
-    'grocery': ('Food & Dining', 'Groceries'),
-    'groceries': ('Food & Dining', 'Groceries'),
-    'restaurant': ('Food & Dining', 'Resturants'),
-    'dentist': ('Health & Fitness', 'Dentist'),
-    'doctor': ('Health & Fitness', 'Doctor'),
-    'eyecare': ('Health & Fitness', 'Eyecare'),
-    'gym': ('Health & Fitness', 'Gym'),
-    'health insurance': ('Health & Fitness', 'Health Insurance'),
-    'pharmacy': ('Health & Fitness', 'Pharmacy'),
-    'sports': ('Health & Fitness', 'Sports'),
-    'furnishings': ('Home', 'Furnishings'),
-    'home improvement': ('Home', 'Home Improvement'),
-    'home insurance': ('Home', 'Home Insurance'),
-    'home services': ('Home', 'Home Services'),
-    'home supplies': ('Home', 'Home Supplies'),
-    'lawn': ('Home', 'Lawn & Garden'),
-    'garden': ('Home', 'Lawn & Garden'),
-    'mortgage': ('Home', 'Mortgage & Rent'),
-    'rent': ('Home', 'Mortgage & Rent'),
-    'bonus': ('Income', 'Bonus'),
-    'interest income': ('Income', 'Interest Income'),
-    'paycheck': ('Income', 'Paycheck'),
-    'reimbursement': ('Income', 'Reimbursement'),
-    'rental income': ('Income', 'Rental Income'),
-    'hair': ('Personal Care', 'Hair'),
-    'laundry': ('Personal Care', 'Laundry'),
-    'spa': ('Personal Care', 'Spa & Message'),
-    'message': ('Personal Care', 'Spa & Message'),
-    'returned purchase': ('Shopping', 'Returned Purchase'),
-    'books': ('Shopping', 'Books'),
-    'clothing': ('Shopping', 'Clothing'),
-    'electronics': ('Shopping', 'Electronics & Software'),
-    'software': ('Shopping', 'Electronics & Software'),
-    'hobbies': ('Shopping', 'Hobbies'),
-    'sporting goods': ('Shopping', 'Sporting Goods'),
-    'amazon': ('Shopping', 'Amazon'),
-    'air travel': ('Travel', 'Air Travel'),
-    'hotel': ('Travel', 'Hotel'),
-    'rental car': ('Travel', 'Rental Car & Taxi'),
-    'taxi': ('Travel', 'Rental Car & Taxi'),
-    'vacation': ('Travel', 'Vacation'),
+    'Auto & Transport': [
+        'Auto Insurance',
+        'Auto Payment',
+        'Gas & Fuel',
+        'Parking',
+        'Public Transportation',
+        'Ride Share',
+        'Service & Parts',
+    ],
+    'Bills & Utilities': [
+        'Home Phone',
+        'Internet',
+        'Mobile Phone',
+        'Television',
+        'Utilities',
+    ],
+    'Education': [
+        'Books & Supplies',
+        'Student Loan',
+        'Tuition',
+    ],
+    'Entertainment': [
+        'Amusement',
+        'Arts',
+        'Movies & DVDs',
+        'Music',
+        'Newspapers & Magazines',
+    ],
+    'Fees & Charges': [
+        'ATM Fee',
+        'Bank Fee',
+        'Finance Charge',
+        'Late Fee',
+        'Service Fee',
+        'Federal Tax',
+        'Local Tax',
+        'Property Tax',
+        'Sales Tax',
+        'State Tax',
+    ],
+    'Financial': [
+        'Trade Commissions',
+    ],
+    'Food & Dining': [
+        'Alcohol & Bars',
+        'Coffee Shops',
+        'Fast Food',
+        'Food Delivery',
+        'Groceries',
+        'Resturants',
+    ],
+    'Health & Fitness': [
+        'Dentist',
+        'Doctor',
+        'Eyecare',
+        'Gym',
+        'Health Insurance',
+        'Pharmacy',
+        'Sports',
+    ],
+    'Home': [
+        'Furnishings',
+        'Home Improvement',
+        'Home Insurance',
+        'Home Services',
+        'Home Supplies',
+        'Lawn & Garden',
+        'Mortgage & Rent',
+    ],
+    'Income': [
+        'Bonus',
+        'Interest Income',
+        'Paycheck',
+        'Reimbursement',
+        'Rental Income',
+    ],
+    'Personal Care': [
+        'Hair',
+        'Laundry',
+        'Spa & Message',
+    ],
+    'Shopping': [
+        'Returned Purchase',
+        'Books',
+        'Clothing',
+        'Electronics & Software',
+        'Hobbies',
+        'Sporting Goods',
+        'Amazon',
+    ],
+    'Travel': [
+        'Air Travel',
+        'Hotel',
+        'Rental Car & Taxi',
+        'Vacation',
+    ],
 }
 
 # Build mapping of categories to subcategories for prompt construction
-CATEGORIES = {}
-for _kw, (cat, subcat) in KEYWORD_MAP.items():
-    CATEGORIES.setdefault(cat, set()).add(subcat)
+CATEGORIES = {cat: set(subs) for cat, subs in KEYWORD_MAP.items()}
 
 
 def openai_normalize(desc: str, date, amount):
@@ -134,9 +147,13 @@ def openai_normalize(desc: str, date, amount):
 
 def categorize(desc: str):
     desc_low = desc.lower()
-    for kw, (cat, subcat) in KEYWORD_MAP.items():
-        if kw in desc_low:
-            return cat, subcat
+    for cat, subcats in CATEGORIES.items():
+        for subcat in subcats:
+            if subcat.lower() in desc_low:
+                return cat, subcat
+    for cat in CATEGORIES:
+        if cat.lower() in desc_low:
+            return cat, 'Uncategorized'
     return 'Uncategorized', 'Uncategorized'
 
 
