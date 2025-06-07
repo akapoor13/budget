@@ -8,7 +8,7 @@ import backoff
 import openai
 import pandas as pd
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
 
 logger = logging.getLogger(__name__)
 
