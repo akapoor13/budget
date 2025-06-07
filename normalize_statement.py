@@ -64,7 +64,7 @@ KEYWORD_MAP = {
         "Fast Food",
         "Food Delivery",
         "Groceries",
-        "Resturants",
+        "Restaurants",
     ],
     "Health & Fitness": [
         "Dentist",
@@ -94,7 +94,7 @@ KEYWORD_MAP = {
     "Personal Care": [
         "Hair",
         "Laundry",
-        "Spa & Message",
+        "Spa & Massage",
     ],
     "Shopping": [
         "Returned Purchase",

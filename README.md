@@ -8,6 +8,8 @@ This repository contains a small Python script to normalize credit card statemen
 pip install -r requirements.txt
 ```
 
+The script uses the OpenAI Batch API which requires `openai>=1.24.0`.
+
 ## Usage
 
 ```bash
