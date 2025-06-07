@@ -1,4 +1,8 @@
 import argparse
+import json
+import os
+
+import openai
 import pandas as pd
 
 KEYWORD_MAP = {
@@ -86,6 +90,48 @@ KEYWORD_MAP = {
     'vacation': ('Travel', 'Vacation'),
 }
 
+# Build mapping of categories to subcategories for prompt construction
+CATEGORIES = {}
+for _kw, (cat, subcat) in KEYWORD_MAP.items():
+    CATEGORIES.setdefault(cat, set()).add(subcat)
+
+
+def openai_normalize(desc: str, date, amount):
+    """Use OpenAI to clean merchant name and classify the transaction."""
+    if not openai.api_key:
+        openai.api_key = os.getenv("OPENAI_API_KEY", "")
+
+    cats = "\n".join(
+        f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
+    )
+    prompt = (
+        "Clean up the merchant name and classify the transaction into one of the"
+        " following categories and subcategories. Respond in JSON with keys 'clean_"
+        "description', 'category', and 'subcategory'.\n\n"
+        f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{cats}"
+    )
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant for personal finance.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+        )
+        content = resp["choices"][0]["message"]["content"]
+        data = json.loads(content)
+        return (
+            data.get("clean_description", desc),
+            data.get("category", "Uncategorized"),
+            data.get("subcategory", "Uncategorized"),
+        )
+    except Exception:
+        return desc, *categorize(desc)
+
 def categorize(desc: str):
     desc_low = desc.lower()
     for kw, (cat, subcat) in KEYWORD_MAP.items():
@@ -106,9 +152,18 @@ def main():
             raise ValueError(f"Missing required column: {col}")
 
     df['Date'] = pd.to_datetime(df['Date']).dt.date
-    df[['Category', 'Subcategory']] = df['Description'].apply(lambda x: pd.Series(categorize(x)))
 
-    out = df[['Date', 'Description', 'Amount', 'Category', 'Subcategory']]
+    normalized = df.apply(
+        lambda row: pd.Series(
+            openai_normalize(row['Description'], row['Date'], row['Amount'])
+        ),
+        axis=1,
+    )
+    normalized.columns = ['Merchant', 'Category', 'Subcategory']
+
+    out = pd.concat([df[['Date', 'Amount']], normalized], axis=1)[
+        ['Date', 'Merchant', 'Amount', 'Category', 'Subcategory']
+    ]
     out.to_csv(args.output, index=False)
 
 if __name__ == '__main__':
