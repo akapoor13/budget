@@ -9,9 +9,7 @@ import os
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Iterable, Optional
-
-import backoff
+from typing import Optional
 import openai
 import pandas as pd
 
@@ -176,74 +174,6 @@ def load_api_key():
         "create a .openai_api_key file."
     )
 
-
-# The OpenAI Python package moved its error classes from the ``error`` module to
-# the package root in v1. To remain compatible with both the 0.x and 1.x
-# versions we dynamically pick the location of the error classes.
-errors_mod = openai.error if hasattr(openai, "error") else openai
-
-
-@backoff.on_exception(
-    backoff.expo,
-    (errors_mod.RateLimitError, errors_mod.APIError),
-    max_tries=5,
-    logger=logger,
-)
-def _chat_with_retry(messages):
-    """Call OpenAI with exponential backoff on rate limit errors."""
-    resp = openai.chat.completions.create(
-        model=DEFAULT_MODEL,
-        messages=messages,
-        temperature=0,
-        response_format={"type": "json_object"},
-    )
-    return resp.choices[0].message.content
-
-
-def openai_normalize(desc: str, date, amount):
-    """Use OpenAI to clean merchant name and classify the transaction."""
-    load_api_key()
-
-    prompt = build_prompt(desc, date, amount)
-    logger.debug("Prompt sent to OpenAI:\n%s", prompt)
-    content = _chat_with_retry(
-        [
-            {
-                "role": "system",
-                "content": "You are a helpful assistant for personal finance.",
-            },
-            {"role": "user", "content": prompt},
-        ]
-    )
-    content = content.strip() if content else ""
-
-    # Newer models sometimes wrap the JSON response in a Markdown code block
-    # when asked for a structured reply. Strip these markers if present so the
-    # result can be parsed correctly.
-    if content.startswith("```"):
-        # Extract text between the first and last code fences
-        import re
-
-        match = re.search(r"```(?:json)?\n?(.*?)```", content, re.DOTALL)
-        if match:
-            content = match.group(1).strip()
-
-    if not content:
-        cat, sub = categorize(desc)
-        return TransactionClassification(None, cat, sub)
-
-    try:
-        data = json.loads(content)
-    except Exception:
-        logger.exception("Failed to parse OpenAI response")
-        cat, sub = categorize(desc)
-        return TransactionClassification(None, cat, sub)
-
-    return TransactionClassification(
-        data.get("company"),
-        data.get("category", "Uncategorized"),
-        data.get("subcategory", "Uncategorized"),
-    )
 
 
 def categorize(desc: str) -> tuple[str, str]:
