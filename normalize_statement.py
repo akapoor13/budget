@@ -3,12 +3,13 @@ import json
 import os
 import logging
 import time
+import tempfile
 
 import backoff
 import openai
 import pandas as pd
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +172,10 @@ def openai_normalize(desc: str, date, amount):
         f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
     )
     prompt = (
-        "Clean up the merchant name and classify the transaction into one of the"
-        " following categories and subcategories. Respond in JSON with keys 'clean_"
-        "description', 'category', and 'subcategory'.\n\n"
+        "Clean up the merchant name, try to infer the company behind the charge,"
+        " and classify the transaction into one of the following categories and"
+        " subcategories. Respond in JSON with keys 'company', 'category', and"
+        " 'subcategory'.\n\n"
         f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{cats}"
     )
     logger.debug("Prompt sent to OpenAI:\n%s", prompt)
@@ -188,16 +190,16 @@ def openai_normalize(desc: str, date, amount):
     )
     content = content.strip() if content else ""
     if not content:
-        return desc, *categorize(desc)
+        return None, *categorize(desc)
 
     try:
         data = json.loads(content)
     except Exception:
         logger.exception("Failed to parse OpenAI response")
-        return desc, *categorize(desc)
+        return None, *categorize(desc)
 
     return (
-        data.get("clean_description", desc),
+        data.get("company"),
         data.get("category", "Uncategorized"),
         data.get("subcategory", "Uncategorized"),
     )
@@ -213,6 +215,90 @@ def categorize(desc: str):
         if cat.lower() in desc_low:
             return cat, "Uncategorized"
     return "Uncategorized", "Uncategorized"
+
+
+def batch_normalize(df: pd.DataFrame):
+    """Normalize all rows at once using the OpenAI Batch API."""
+    load_api_key()
+
+    requests = []
+    cats = "\n".join(
+        f"- {cat}: {', '.join(sorted(subs))}" for cat, subs in CATEGORIES.items()
+    )
+    for idx, row in df.iterrows():
+        prompt = (
+            "Clean up the merchant name, try to infer the company behind the charge,"
+            " and classify the transaction into one of the following categories and"
+            " subcategories. Respond in JSON with keys 'company', 'category', and"
+            " 'subcategory'.\n\n"
+            f"Date: {row['Date']}\nDescription: {row['Description']}\nAmount: {row['Amount']}\n\nCategories:\n{cats}"
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant for personal finance.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+        requests.append(
+            {
+                "custom_id": str(idx),
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": MODEL,
+                    "messages": messages,
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                },
+            }
+        )
+
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".jsonl") as fh:
+        for req in requests:
+            fh.write(json.dumps(req) + "\n")
+        input_path = fh.name
+
+    try:
+        file_obj = openai.files.create(file=open(input_path, "rb"), purpose="batch")
+        batch = openai.batches.create(
+            input_file_id=file_obj.id,
+            endpoint="/v1/chat/completions",
+            completion_window="24h",
+        )
+        logger.info("Created batch %s", batch.id)
+        while True:
+            batch = openai.batches.retrieve(batch.id)
+            if batch.status in {"completed", "failed", "expired", "cancelled"}:
+                break
+            time.sleep(5)
+
+        if batch.status != "completed":
+            raise RuntimeError(f"Batch finished with status {batch.status}")
+
+        output = openai.files.content(batch.output_file_id).decode("utf-8").splitlines()
+    finally:
+        os.remove(input_path)
+
+    results = {}
+    for line in output:
+        rec = json.loads(line)
+        cid = int(rec.get("custom_id", 0))
+        if "response" in rec and rec["response"].get("status_code") == 200:
+            body = json.loads(rec["response"]["body"])
+            content = body["choices"][0]["message"]["content"]
+            try:
+                data = json.loads(content.strip())
+                results[cid] = (
+                    data.get("company"),
+                    data.get("category", "Uncategorized"),
+                    data.get("subcategory", "Uncategorized"),
+                )
+            except Exception:
+                logger.exception("Failed to parse response for row %s", cid)
+        else:
+            logger.error("Request %s failed: %s", cid, rec.get("error"))
+    return results
 
 
 def main():
@@ -236,17 +322,32 @@ def main():
 
     df["Date"] = pd.to_datetime(df["Date"]).dt.date
 
-    normalized = df.apply(
-        lambda row: pd.Series(
-            openai_normalize(row["Description"], row["Date"], row["Amount"])
-        ),
-        axis=1,
-    )
-    normalized.columns = ["Merchant", "Category", "Subcategory"]
+    results = batch_normalize(df)
+    normalized_rows = []
+    for idx, row in df.iterrows():
+        resp = results.get(idx)
+        if resp:
+            company, category, subcategory = resp
+            desc = company or row["Description"]
+        else:
+            desc = row["Description"]
+            category, subcategory = categorize(row["Description"])
+        normalized_rows.append([desc, category, subcategory])
 
-    out = pd.concat([df[["Date", "Amount"]], normalized], axis=1)[
-        ["Date", "Merchant", "Amount", "Category", "Subcategory"]
-    ]
+    normalized = pd.DataFrame(
+        normalized_rows,
+        columns=["Description", "Category", "Subcategory"],
+    )
+
+    out = pd.DataFrame(
+        {
+            "Date": df["Date"],
+            "Description": normalized["Description"],
+            "Amount": df["Amount"],
+            "Category": normalized["Category"],
+            "Subcategory": normalized["Subcategory"],
+        }
+    )
     out.to_csv(args.output, index=False)
 
 
