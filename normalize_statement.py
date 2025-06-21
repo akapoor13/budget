@@ -190,7 +190,7 @@ def categorize(desc: str) -> tuple[str, str]:
     return "Uncategorized", "Uncategorized"
 
 
-def batch_normalize(df: pd.DataFrame, desc_col: str) -> dict[int, TransactionClassification]:
+def batch_normalize(df: pd.DataFrame) -> dict[int, TransactionClassification]:
     """Normalize rows sequentially using the Chat API with retries."""
     load_api_key()
 
@@ -228,8 +228,8 @@ def batch_normalize(df: pd.DataFrame, desc_col: str) -> dict[int, TransactionCla
                 )
                 time.sleep(wait)
         else:
-            desc_val = row.get(desc_col, "")
-            cat, sub = categorize(str(desc_val))
+            desc_val = " ".join(str(v) for v in row.values)
+            cat, sub = categorize(desc_val)
             results[idx] = TransactionClassification(None, cat, sub)
 
     return results
@@ -251,28 +251,24 @@ def main():
 
     df = pd.read_csv(args.csvfile)
 
-    desc_col = next((c for c in df.columns if "desc" in c.lower()), df.columns[0])
-
-    results = batch_normalize(df, desc_col)
+    results = batch_normalize(df)
     normalized_rows = []
     for idx, row in df.iterrows():
         classification = results.get(idx)
         if classification:
-            desc = classification.company or row.get(desc_col, "")
             category = classification.category
             subcategory = classification.subcategory
         else:
-            desc = row.get(desc_col, "")
-            category, subcategory = categorize(str(desc))
-        normalized_rows.append([desc, category, subcategory])
+            desc_val = " ".join(str(v) for v in row.values)
+            category, subcategory = categorize(desc_val)
+        normalized_rows.append([category, subcategory])
 
     normalized = pd.DataFrame(
         normalized_rows,
-        columns=["Description", "Category", "Subcategory"],
+        columns=["Category", "Subcategory"],
     )
 
     out = df.copy()
-    out["Description"] = normalized["Description"]
     out["Category"] = normalized["Category"]
     out["Subcategory"] = normalized["Subcategory"]
     out.to_csv(args.output, index=False)

@@ -32,9 +32,8 @@ OpenAI using the `response_format` parameter so the model always returns a
 valid JSON object.
 
 The script reads the input CSV as-is without requiring specific column names.
-All columns of each row are sent to the Chat API for classification. The
-column whose name contains `desc` (case-insensitive) is treated as the
-transaction description and will be cleaned using the company name returned by
-the model. The output CSV preserves all original columns and appends
-`Category` and `Subcategory`.
+All columns of each row are sent to the Chat API for classification.
+No attempt is made to identify a description column or modify your data.
+The output CSV preserves all original columns and appends `Category` and
+`Subcategory`.
 
