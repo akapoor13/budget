@@ -137,14 +137,15 @@ def build_categories_string() -> str:
     )
 
 
-def build_prompt(desc: str, date, amount) -> str:
-    """Construct the user prompt sent to OpenAI."""
+def build_prompt(row: pd.Series) -> str:
+    """Construct the user prompt sent to OpenAI using all row columns."""
+    row_details = "\n".join(f"{col}: {row[col]}" for col in row.index)
     return (
         "Clean up the merchant name, infer the company, and classify the charge. "
         "Treat any 'AplPay' or 'Apple Pay' tag as the payment method, not part of the company name. "
         "Remove any location, country, city, or state references from the name. "
         "Respond in JSON with keys 'company', 'category', and 'subcategory'.\n\n"
-        f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{build_categories_string()}"
+        f"{row_details}\n\nCategories:\n{build_categories_string()}"
     )
 
 
@@ -189,13 +190,13 @@ def categorize(desc: str) -> tuple[str, str]:
     return "Uncategorized", "Uncategorized"
 
 
-def batch_normalize(df: pd.DataFrame):
+def batch_normalize(df: pd.DataFrame, desc_col: str) -> dict[int, TransactionClassification]:
     """Normalize rows sequentially using the Chat API with retries."""
     load_api_key()
 
     results: dict[int, TransactionClassification] = {}
     for idx, row in df.iterrows():
-        prompt = build_prompt(row["Description"], row["Date"], row["Amount"])
+        prompt = build_prompt(row)
         messages = [
             {
                 "role": "system",
@@ -227,7 +228,8 @@ def batch_normalize(df: pd.DataFrame):
                 )
                 time.sleep(wait)
         else:
-            cat, sub = categorize(row["Description"])
+            desc_val = row.get(desc_col, "")
+            cat, sub = categorize(str(desc_val))
             results[idx] = TransactionClassification(None, cat, sub)
 
     return results
@@ -248,23 +250,20 @@ def main():
     logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
 
     df = pd.read_csv(args.csvfile)
-    for col in ["Date", "Description", "Amount"]:
-        if col not in df.columns:
-            raise ValueError(f"Missing required column: {col}")
 
-    df["Date"] = pd.to_datetime(df["Date"]).dt.date
+    desc_col = next((c for c in df.columns if "desc" in c.lower()), df.columns[0])
 
-    results = batch_normalize(df)
+    results = batch_normalize(df, desc_col)
     normalized_rows = []
     for idx, row in df.iterrows():
         classification = results.get(idx)
         if classification:
-            desc = classification.company or row["Description"]
+            desc = classification.company or row.get(desc_col, "")
             category = classification.category
             subcategory = classification.subcategory
         else:
-            desc = row["Description"]
-            category, subcategory = categorize(row["Description"])
+            desc = row.get(desc_col, "")
+            category, subcategory = categorize(str(desc))
         normalized_rows.append([desc, category, subcategory])
 
     normalized = pd.DataFrame(
@@ -272,15 +271,10 @@ def main():
         columns=["Description", "Category", "Subcategory"],
     )
 
-    out = pd.DataFrame(
-        {
-            "Date": df["Date"],
-            "Description": normalized["Description"],
-            "Amount": df["Amount"],
-            "Category": normalized["Category"],
-            "Subcategory": normalized["Subcategory"],
-        }
-    )
+    out = df.copy()
+    out["Description"] = normalized["Description"]
+    out["Category"] = normalized["Category"]
+    out["Subcategory"] = normalized["Subcategory"]
     out.to_csv(args.output, index=False)
 
 

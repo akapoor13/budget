@@ -31,10 +31,10 @@ To avoid parse errors the script now requests structured responses from
 OpenAI using the `response_format` parameter so the model always returns a
 valid JSON object.
 
-The input CSV must have the columns `Date`, `Description`, and `Amount`. Each row
-is sent sequentially to the Chat API to clean up the merchant name, infer the company,
-and determine the most likely spending category. When
-available, the inferred company name is used in the `Description` column. The
-output CSV contains the columns `Date`, `Description`, `Amount`, `Category`,
-and `Subcategory`.
+The script reads the input CSV as-is without requiring specific column names.
+All columns of each row are sent to the Chat API for classification. The
+column whose name contains `desc` (case-insensitive) is treated as the
+transaction description and will be cleaned using the company name returned by
+the model. The output CSV preserves all original columns and appends
+`Category` and `Subcategory`.
 
