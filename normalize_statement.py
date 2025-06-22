@@ -246,6 +246,10 @@ def main():
     logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
 
     df = pd.read_csv(args.csvfile)
+    if "Date" not in df.columns:
+        df["Date"] = pd.NA
+    if "Amount" not in df.columns:
+        df["Amount"] = pd.NA
 
     results = batch_normalize(df)
     normalized_rows = []
