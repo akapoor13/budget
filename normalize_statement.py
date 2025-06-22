@@ -6,7 +6,6 @@ import argparse
 import json
 import logging
 import os
-import tempfile
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -22,7 +21,9 @@ logger = logging.getLogger(__name__)
 class TransactionClassification:
     """Structured result describing a classified transaction."""
 
+    date: Optional[str]
     company: Optional[str]
+    amount: Optional[float]
     category: str
     subcategory: str
 
@@ -137,14 +138,16 @@ def build_categories_string() -> str:
     )
 
 
-def build_prompt(desc: str, date, amount) -> str:
-    """Construct the user prompt sent to OpenAI."""
+def build_prompt(row: pd.Series) -> str:
+    """Construct the user prompt sent to OpenAI using all row columns."""
+    row_details = "\n".join(f"{col}: {row[col]}" for col in row.index)
     return (
-        "Clean up the merchant name, infer the company, and classify the charge. "
-        "Treat any 'AplPay' or 'Apple Pay' tag as the payment method, not part of the company name. "
-        "Remove any location, country, city, or state references from the name. "
-        "Respond in JSON with keys 'company', 'category', and 'subcategory'.\n\n"
-        f"Date: {date}\nDescription: {desc}\nAmount: {amount}\n\nCategories:\n{build_categories_string()}"
+        "Clean up the merchant name and infer the transaction date, company name, "
+        "and amount from these columns. Treat any 'AplPay' or 'Apple Pay' tag as the payment "
+        "method, not part of the company name. Remove location references like country or state. "
+        "Classify the charge using the categories provided and respond in JSON with keys "
+        "'date', 'company', 'amount', 'category', and 'subcategory'.\n\n"
+        f"{row_details}\n\nCategories:\n{build_categories_string()}"
     )
 
 
@@ -189,13 +192,52 @@ def categorize(desc: str) -> tuple[str, str]:
     return "Uncategorized", "Uncategorized"
 
 
-def batch_normalize(df: pd.DataFrame):
+def extract_date_amount(row: pd.Series) -> tuple[Optional[str], Optional[float]]:
+    """Attempt to infer date and amount values from a row."""
+    date_val: Optional[str] = None
+    amount_val: Optional[float] = None
+    for value in row.values:
+        if date_val is None:
+            try:
+                d = pd.to_datetime(value, errors="coerce")
+                if pd.notna(d):
+                    date_val = str(d.date())
+            except Exception:
+                pass
+        if amount_val is None:
+            try:
+                cleaned = str(value).replace("$", "").replace(",", "")
+                num = pd.to_numeric(cleaned, errors="coerce")
+                if pd.notna(num):
+                    amount_val = float(num)
+            except Exception:
+                pass
+        if date_val is not None and amount_val is not None:
+            break
+    return date_val, amount_val
+
+
+def infer_company(row: pd.Series) -> str:
+    """Guess a description/company field from available columns."""
+    for col in row.index:
+        name = col.lower()
+        if any(key in name for key in ["desc", "merchant", "name"]):
+            val = row[col]
+            if pd.notna(val):
+                return str(val)
+    for value in row.values:
+        if isinstance(value, str) and value.strip():
+            return value
+    return " ".join(str(v) for v in row.values if pd.notna(v))
+
+
+def batch_normalize(df: pd.DataFrame) -> dict[int, TransactionClassification]:
     """Normalize rows sequentially using the Chat API with retries."""
     load_api_key()
 
     results: dict[int, TransactionClassification] = {}
     for idx, row in df.iterrows():
-        prompt = build_prompt(row["Description"], row["Date"], row["Amount"])
+        prompt = build_prompt(row)
         messages = [
             {
                 "role": "system",
@@ -204,6 +246,7 @@ def batch_normalize(df: pd.DataFrame):
             {"role": "user", "content": prompt},
         ]
 
+        success = False
         for attempt in range(5):
             try:
                 resp = openai.chat.completions.create(
@@ -215,10 +258,13 @@ def batch_normalize(df: pd.DataFrame):
                 content = resp.choices[0].message.content
                 data = json.loads(content.strip())
                 results[idx] = TransactionClassification(
+                    data.get("date"),
                     data.get("company"),
+                    float(data["amount"]) if "amount" in data and data["amount"] is not None else None,
                     data.get("category", "Uncategorized"),
                     data.get("subcategory", "Uncategorized"),
                 )
+                success = True
                 break
             except Exception as exc:  # broad catch to retry on any failure
                 wait = 2 ** attempt
@@ -226,9 +272,12 @@ def batch_normalize(df: pd.DataFrame):
                     "Request failed for row %s (attempt %s): %s", idx, attempt + 1, exc
                 )
                 time.sleep(wait)
-        else:
-            cat, sub = categorize(row["Description"])
-            results[idx] = TransactionClassification(None, cat, sub)
+        if not success:
+            # fall back to simple heuristics when the API fails repeatedly
+            desc = infer_company(row)
+            date_val, amount_val = extract_date_amount(row)
+            cat, sub = categorize(desc)
+            results[idx] = TransactionClassification(date_val, desc, amount_val, cat, sub)
 
     return results
 
@@ -248,38 +297,28 @@ def main():
     logging.basicConfig(level=level, format="%(levelname)s:%(name)s:%(message)s")
 
     df = pd.read_csv(args.csvfile)
-    for col in ["Date", "Description", "Amount"]:
-        if col not in df.columns:
-            raise ValueError(f"Missing required column: {col}")
-
-    df["Date"] = pd.to_datetime(df["Date"]).dt.date
 
     results = batch_normalize(df)
     normalized_rows = []
     for idx, row in df.iterrows():
         classification = results.get(idx)
         if classification:
-            desc = classification.company or row["Description"]
-            category = classification.category
-            subcategory = classification.subcategory
+            normalized_rows.append([
+                classification.date,
+                classification.company,
+                classification.amount,
+                classification.category,
+                classification.subcategory,
+            ])
         else:
-            desc = row["Description"]
-            category, subcategory = categorize(row["Description"])
-        normalized_rows.append([desc, category, subcategory])
-
-    normalized = pd.DataFrame(
-        normalized_rows,
-        columns=["Description", "Category", "Subcategory"],
-    )
+            desc = infer_company(row)
+            date_val, amount_val = extract_date_amount(row)
+            cat, sub = categorize(desc)
+            normalized_rows.append([date_val, desc, amount_val, cat, sub])
 
     out = pd.DataFrame(
-        {
-            "Date": df["Date"],
-            "Description": normalized["Description"],
-            "Amount": df["Amount"],
-            "Category": normalized["Category"],
-            "Subcategory": normalized["Subcategory"],
-        }
+        normalized_rows,
+        columns=["Date", "Company", "Amount", "Category", "Subcategory"],
     )
     out.to_csv(args.output, index=False)
 
