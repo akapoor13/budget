@@ -31,9 +31,9 @@ To avoid parse errors the script now requests structured responses from
 OpenAI using the `response_format` parameter so the model always returns a
 valid JSON object.
 
-The script reads the input CSV as-is and sends all column values to the Chat API
-for classification. The normalized output preserves all input columns. It always
-includes `Date` and `Amount` columns when available and appends `Company`,
-`Category`, and `Subcategory` to each row. Missing values are left blank when
-necessary.
+The script reads any CSV format and sends each row's data to the Chat API for
+classification. The model is asked to infer the transaction date and amount from
+the available columns, clean up the merchant name, and determine the spending
+category. The resulting CSV contains only five fields: `Date`, `Company`,
+`Amount`, `Category`, and `Subcategory`.
 
