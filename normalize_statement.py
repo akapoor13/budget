@@ -228,6 +228,9 @@ def batch_normalize(df: pd.DataFrame) -> dict[int, TransactionClassification]:
                 )
                 time.sleep(wait)
         else:
+            # After exhausting retries, fall back to simple keyword matching
+            # across all values of the row to provide a best-effort
+            # classification.
             desc_val = " ".join(str(v) for v in row.values)
             cat, sub = categorize(desc_val)
             results[idx] = TransactionClassification(None, cat, sub)
