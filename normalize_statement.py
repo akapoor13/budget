@@ -146,7 +146,9 @@ def build_prompt(row: pd.Series) -> str:
         "and amount from these columns. Treat any 'AplPay' or 'Apple Pay' tag as the payment "
         "method, not part of the company name. Remove location references like country or state. "
         "Classify the charge using the categories provided and respond in JSON with keys "
-        "'date', 'company', 'amount', 'category', and 'subcategory'.\n\n"
+        "'date', 'company', 'amount', 'category', and 'subcategory'. The 'category' must exactly "
+        "match one of the categories below and 'subcategory' must be one of that category's "
+        "listed subcategories. If nothing fits, use 'Uncategorized' for both fields.\n\n"
         f"{row_details}\n\nCategories:\n{build_categories_string()}"
     )
 
