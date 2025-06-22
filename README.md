@@ -34,6 +34,8 @@ valid JSON object.
 The script reads any CSV format and sends each row's data to the Chat API for
 classification. The model is asked to infer the transaction date and amount from
 the available columns, clean up the merchant name, and determine the spending
-category. The resulting CSV contains only five fields: `Date`, `Company`,
-`Amount`, `Category`, and `Subcategory`.
+category. Categories and subcategories are chosen from a fixed list. If no
+category fits, the model will use `Uncategorized` for both fields. The resulting
+CSV contains only five fields: `Date`, `Company`, `Amount`, `Category`, and
+`Subcategory`.
 
