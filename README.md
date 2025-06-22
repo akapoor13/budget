@@ -32,8 +32,7 @@ OpenAI using the `response_format` parameter so the model always returns a
 valid JSON object.
 
 The script reads the input CSV as-is and sends all column values to the Chat API
-for classification. The normalized output includes the original `Date`,
-`Description`, and `Amount` columns when present and always appends
-`Category` and `Subcategory`. Missing base columns are left blank in the
-output.
+for classification. The normalized output preserves all original columns and
+adds `Company`, `Category`, and `Subcategory` to each row. Missing values are
+left blank when necessary.
 

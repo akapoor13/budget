@@ -227,12 +227,6 @@ def batch_normalize(df: pd.DataFrame) -> dict[int, TransactionClassification]:
                     "Request failed for row %s (attempt %s): %s", idx, attempt + 1, exc
                 )
                 time.sleep(wait)
-        else:
-            # Skip classification for this row after repeated failures
-            logger.error(
-                "Skipping row %s after exhausting retries", idx
-            )
-            continue
 
     return results
 
@@ -258,21 +252,22 @@ def main():
     for idx, row in df.iterrows():
         classification = results.get(idx)
         if classification:
+            company = classification.company or row.get("Description", pd.NA)
             category = classification.category
             subcategory = classification.subcategory
         else:
+            company = row.get("Description", pd.NA)
             desc_val = " ".join(str(v) for v in row.values)
             category, subcategory = categorize(desc_val)
-        normalized_rows.append([category, subcategory])
+        normalized_rows.append([company, category, subcategory])
 
     normalized = pd.DataFrame(
         normalized_rows,
-        columns=["Category", "Subcategory"],
+        columns=["Company", "Category", "Subcategory"],
     )
 
-    out = pd.DataFrame()
-    for col in ["Date", "Description", "Amount"]:
-        out[col] = df[col] if col in df.columns else pd.NA
+    out = df.copy()
+    out["Company"] = normalized["Company"]
     out["Category"] = normalized["Category"]
     out["Subcategory"] = normalized["Subcategory"]
     out.to_csv(args.output, index=False)
