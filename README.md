@@ -31,9 +31,9 @@ To avoid parse errors the script now requests structured responses from
 OpenAI using the `response_format` parameter so the model always returns a
 valid JSON object.
 
-The script reads the input CSV as-is without requiring specific column names.
-All columns of each row are sent to the Chat API for classification.
-No attempt is made to identify a description column or modify your data.
-The output CSV preserves all original columns and appends `Category` and
-`Subcategory`.
+The script reads the input CSV as-is and sends all column values to the Chat API
+for classification. The normalized output includes the original `Date`,
+`Description`, and `Amount` columns when present and always appends
+`Category` and `Subcategory`. Missing base columns are left blank in the
+output.
 

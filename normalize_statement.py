@@ -228,12 +228,11 @@ def batch_normalize(df: pd.DataFrame) -> dict[int, TransactionClassification]:
                 )
                 time.sleep(wait)
         else:
-            # After exhausting retries, fall back to simple keyword matching
-            # across all values of the row to provide a best-effort
-            # classification.
-            desc_val = " ".join(str(v) for v in row.values)
-            cat, sub = categorize(desc_val)
-            results[idx] = TransactionClassification(None, cat, sub)
+            # Skip classification for this row after repeated failures
+            logger.error(
+                "Skipping row %s after exhausting retries", idx
+            )
+            continue
 
     return results
 
@@ -271,7 +270,9 @@ def main():
         columns=["Category", "Subcategory"],
     )
 
-    out = df.copy()
+    out = pd.DataFrame()
+    for col in ["Date", "Description", "Amount"]:
+        out[col] = df[col] if col in df.columns else pd.NA
     out["Category"] = normalized["Category"]
     out["Subcategory"] = normalized["Subcategory"]
     out.to_csv(args.output, index=False)
